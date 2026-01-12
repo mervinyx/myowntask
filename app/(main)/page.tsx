@@ -198,7 +198,7 @@ export default function MainPage() {
   return (
     <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="flex h-screen bg-white">
-        <aside className="w-80 border-r border-gray-200 flex flex-col">
+        <aside className="w-96 border-r border-gray-200 flex flex-col">
           <div className="p-4 border-b border-gray-200">
             <h1 className="text-lg font-medium text-gray-900">TaskFlow</h1>
             <div className="flex items-center justify-between mt-2">
@@ -240,27 +240,11 @@ export default function MainPage() {
           />
         </aside>
         <main className="flex-1 flex flex-col">
-          <div className="p-4 border-b border-gray-200 bg-white flex items-center justify-between">
-            <div className="flex gap-1">
-              {(["month", "week", "day"] as const).map((v) => (
-                <button
-                  key={v}
-                  onClick={() => handleViewChange(v)}
-                  className={`px-3 py-1.5 text-sm rounded transition-colors ${
-                    view === v
-                      ? "bg-gray-900 text-white"
-                      : "hover:bg-gray-100 text-gray-700"
-                  }`}
-                >
-                  {v.charAt(0).toUpperCase() + v.slice(1)}
-                </button>
-              ))}
-            </div>
-          </div>
           <Calendar
             view={view}
             currentDate={currentDate}
             tasks={tasks}
+            onViewChange={handleViewChange}
             onDropTask={handleDropTask}
             onDragBack={handleDragBack}
             onPrevious={handlePrevious}

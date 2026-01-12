@@ -25,6 +25,7 @@ interface CalendarProps {
   currentDate: Date
   tasks: Task[]
   externalEvents?: ExternalEvent[]
+  onViewChange: (view: "month" | "week" | "day") => void
   onDropTask: (taskId: string, date: Date, time?: string) => void
   onDragBack: (taskId: string) => void
   onPrevious: () => void
@@ -47,6 +48,7 @@ export default function Calendar({
   currentDate,
   tasks,
   externalEvents = [],
+  onViewChange,
   onDropTask,
   onDragBack,
   onPrevious,
@@ -220,7 +222,7 @@ export default function Calendar({
                     key={`${dayIndex}-${hour}`}
                     id={`time-${day.toISOString()}-${hour}`}
                     data={{ type: "time", date: day, hour }}
-                    className="h-16 p-1 bg-white border-r border-gray-100"
+                    className="h-12 p-1 bg-white border-r border-gray-100"
                   >
                     {hourTasks.map((task) => (
                       <div
@@ -266,7 +268,7 @@ export default function Calendar({
                 <DroppableCell
                   id={`time-${currentDate.toISOString()}-${hour}`}
                   data={{ type: "time", date: currentDate, hour }}
-                  className="h-20 p-2 bg-white"
+                  className="h-14 p-2 bg-white"
                 >
                   {hourTasks.map((task) => (
                     <div
@@ -315,7 +317,7 @@ export default function Calendar({
           {(["month", "week", "day"] as const).map((v) => (
             <button
               key={v}
-              onClick={() => {}}
+              onClick={() => onViewChange(v)}
               className={`px-3 py-1 text-sm rounded transition-colors ${
                 view === v
                   ? "bg-gray-900 text-white"
