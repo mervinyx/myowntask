@@ -7,7 +7,7 @@ const createAccountSchema = z.object({
   name: z.string().min(1),
   serverUrl: z.string().url(),
   username: z.string().min(1),
-  password: z.string().min(1),
+  password: z.string().optional(),
   color: z.string().optional(),
 })
 
@@ -56,26 +56,47 @@ export async function POST(request: Request) {
       )
     }
 
-    const account = await prisma.calendarAccount.upsert({
-      where: {
-        userId: session.user.id,
-      },
-      update: {
-        name: parsedData.data.name,
-        serverUrl: parsedData.data.serverUrl,
-        username: parsedData.data.username,
-        password: parsedData.data.password,
-        color: parsedData.data.color || "#A0A0A0",
-      },
-      create: {
-        userId: session.user.id,
-        name: parsedData.data.name,
-        serverUrl: parsedData.data.serverUrl,
-        username: parsedData.data.username,
-        password: parsedData.data.password,
-        color: parsedData.data.color || "#A0A0A0",
-      },
+    const existingAccount = await prisma.calendarAccount.findUnique({
+      where: { userId: session.user.id },
     })
+
+    if (!existingAccount && !parsedData.data.password) {
+      return NextResponse.json(
+        { error: "Password is required for new accounts" },
+        { status: 400 }
+      )
+    }
+
+    let account;
+    
+    if (existingAccount) {
+      const updateData: any = {
+        name: parsedData.data.name,
+        serverUrl: parsedData.data.serverUrl,
+        username: parsedData.data.username,
+        color: parsedData.data.color || "#A0A0A0",
+      }
+      
+      if (parsedData.data.password) {
+        updateData.password = parsedData.data.password
+      }
+
+      account = await prisma.calendarAccount.update({
+        where: { userId: session.user.id },
+        data: updateData,
+      })
+    } else {
+      account = await prisma.calendarAccount.create({
+        data: {
+          userId: session.user.id,
+          name: parsedData.data.name,
+          serverUrl: parsedData.data.serverUrl,
+          username: parsedData.data.username,
+          password: parsedData.data.password!,
+          color: parsedData.data.color || "#A0A0A0",
+        },
+      })
+    }
 
     return NextResponse.json(
       {
