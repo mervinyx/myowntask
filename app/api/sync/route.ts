@@ -30,7 +30,7 @@ export async function POST() {
       isAllDay: boolean
     }> = []
 
-    const calDavUrl = `${account.serverUrl}/caldav/v2/${account.username}/events/`
+    const calDavUrl = account.serverUrl
 
     const authHeader = `Basic ${Buffer.from(
       `${account.username}:${account.password}`

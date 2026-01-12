@@ -214,16 +214,19 @@ export default function CalendarSettingsModal({
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Server URL
+                  Calendar URL (Full Address)
                 </label>
                 <input
                   type="url"
                   required
                   value={formData.serverUrl}
                   onChange={(e) => setFormData({ ...formData, serverUrl: e.target.value })}
-                  placeholder="https://caldav.example.com"
+                  placeholder="e.g. https://calendar.dingtalk.com/caldav/u_xxx/"
                   className="w-full px-3 py-2 text-sm text-gray-900 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-gray-900 placeholder:text-gray-400"
                 />
+                <p className="mt-1 text-xs text-gray-500">
+                  Enter the full CalDAV URL including your user path
+                </p>
               </div>
 
               <div>
