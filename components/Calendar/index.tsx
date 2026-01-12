@@ -12,10 +12,19 @@ interface Task {
   duration: number | null
 }
 
+interface ExternalEvent {
+  id: string
+  title: string
+  startAt: string
+  endAt: string
+  isAllDay: boolean
+}
+
 interface CalendarProps {
   view: "month" | "week" | "day"
   currentDate: Date
   tasks: Task[]
+  externalEvents?: ExternalEvent[]
   onDropTask: (taskId: string, date: Date, time?: string) => void
   onDragBack: (taskId: string) => void
   onPrevious: () => void
@@ -37,6 +46,7 @@ export default function Calendar({
   view,
   currentDate,
   tasks,
+  externalEvents = [],
   onDropTask,
   onDragBack,
   onPrevious,
@@ -49,10 +59,18 @@ export default function Calendar({
     LOW: "bg-blue-50 border-blue-200 text-blue-700",
   }
 
+  const externalEventColor = "bg-gray-100 border-gray-300 text-gray-600"
+
   const getTasksForDate = (date: Date) => {
     return tasks.filter((task) => {
       if (!task.scheduledAt) return false
       return isSameDay(new Date(task.scheduledAt), date)
+    })
+  }
+
+  const getExternalEventsForDate = (date: Date) => {
+    return externalEvents.filter((event) => {
+      return isSameDay(new Date(event.startAt), date)
     })
   }
 
@@ -61,6 +79,13 @@ export default function Calendar({
       if (!task.scheduledAt) return false
       const taskDate = new Date(task.scheduledAt)
       return isSameDay(taskDate, date) && taskDate.getHours() === hour
+    })
+  }
+
+  const getExternalEventsForDateTime = (date: Date, hour: number) => {
+    return externalEvents.filter((event) => {
+      const eventDate = new Date(event.startAt)
+      return isSameDay(eventDate, date) && eventDate.getHours() === hour
     })
   }
 
@@ -106,8 +131,10 @@ export default function Calendar({
         {weeks.map((week, weekIndex) =>
           week.map((day, dayIndex) => {
             const dayTasks = getTasksForDate(day)
+            const dayExternalEvents = getExternalEventsForDate(day)
             const isToday = isSameDay(day, new Date())
             const isCurrentMonth = isSameMonth(day, currentDate)
+            const allItems = [...dayTasks.map(t => ({ ...t, isExternal: false })), ...dayExternalEvents.map(e => ({ ...e, isExternal: true }))]
 
             return (
               <DroppableCell
@@ -126,7 +153,7 @@ export default function Calendar({
                   {format(day, "d")}
                 </div>
                 <div className="space-y-1">
-                  {dayTasks.slice(0, 3).map((task) => (
+                  {dayTasks.slice(0, 2).map((task) => (
                     <div
                       key={task.id}
                       className={`text-xs p-1 rounded border ${priorityColors[task.priority]} truncate`}
@@ -135,8 +162,17 @@ export default function Calendar({
                       {formatTime(task.scheduledAt!)} {task.title}
                     </div>
                   ))}
-                  {dayTasks.length > 3 && (
-                    <div className="text-xs text-gray-400">+{dayTasks.length - 3} more</div>
+                  {dayExternalEvents.slice(0, 2).map((event) => (
+                    <div
+                      key={event.id}
+                      className={`text-xs p-1 rounded border ${externalEventColor} truncate`}
+                      title={`${event.title} (external)`}
+                    >
+                      {formatTime(event.startAt)} {event.title}
+                    </div>
+                  ))}
+                  {(dayTasks.length + dayExternalEvents.length) > 4 && (
+                    <div className="text-xs text-gray-400">+{(dayTasks.length + dayExternalEvents.length) - 4} more</div>
                   )}
                 </div>
               </DroppableCell>
