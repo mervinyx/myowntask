@@ -207,7 +207,7 @@ export default function CalendarSettingsModal({
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   placeholder="My Calendar"
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-gray-900 placeholder:text-gray-400"
+                  className="w-full px-3 py-2 text-sm text-gray-900 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-gray-900 placeholder:text-gray-400"
                 />
               </div>
 
@@ -221,7 +221,7 @@ export default function CalendarSettingsModal({
                   value={formData.serverUrl}
                   onChange={(e) => setFormData({ ...formData, serverUrl: e.target.value })}
                   placeholder="https://caldav.example.com"
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-gray-900 placeholder:text-gray-400"
+                  className="w-full px-3 py-2 text-sm text-gray-900 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-gray-900 placeholder:text-gray-400"
                 />
               </div>
 
@@ -234,7 +234,7 @@ export default function CalendarSettingsModal({
                   required
                   value={formData.username}
                   onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-gray-900"
+                  className="w-full px-3 py-2 text-sm text-gray-900 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-gray-900"
                 />
               </div>
 
@@ -248,7 +248,7 @@ export default function CalendarSettingsModal({
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   placeholder={account ? "••••••••" : ""}
                   required={!account}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-gray-900 placeholder:text-gray-400"
+                  className="w-full px-3 py-2 text-sm text-gray-900 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-gray-900 placeholder:text-gray-400"
                 />
               </div>
 
