@@ -55,8 +55,18 @@ export async function POST(request: Request) {
       )
     }
 
-    const account = await prisma.calendarAccount.create({
-      data: {
+    const account = await prisma.calendarAccount.upsert({
+      where: {
+        userId: session.user.id,
+      },
+      update: {
+        name: parsedData.data.name,
+        serverUrl: parsedData.data.serverUrl,
+        username: parsedData.data.username,
+        password: parsedData.data.password,
+        color: parsedData.data.color || "#A0A0A0",
+      },
+      create: {
         userId: session.user.id,
         name: parsedData.data.name,
         serverUrl: parsedData.data.serverUrl,
@@ -76,7 +86,7 @@ export async function POST(request: Request) {
         lastSynced: account.lastSynced,
         createdAt: account.createdAt,
       },
-      { status: 201 }
+      { status: 200 }
     )
   } catch (error: any) {
     console.error("Create calendar account error:", error)
