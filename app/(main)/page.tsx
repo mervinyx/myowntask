@@ -3,8 +3,10 @@
 import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { signOut, useSession } from "next-auth/react"
+import { Settings } from "lucide-react"
 import TaskList from "@/components/TaskList"
 import Calendar from "@/components/Calendar"
+import CalendarSettingsModal from "@/components/CalendarSettingsModal"
 import { DndContext, DragOverlay, DragEndEvent } from "@dnd-kit/core"
 import { useDraggable } from "@dnd-kit/core"
 import { addDays, setHours, setMinutes } from "date-fns"
@@ -28,6 +30,7 @@ export default function MainPage() {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [view, setView] = useState<"month" | "week" | "day">("month")
   const [currentDate, setCurrentDate] = useState(new Date())
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -200,12 +203,21 @@ export default function MainPage() {
             <h1 className="text-lg font-medium text-gray-900">TaskFlow</h1>
             <div className="flex items-center justify-between mt-2">
               <span className="text-sm text-gray-500">{session.user?.email}</span>
-              <button
-                onClick={() => signOut({ callbackUrl: "/login" })}
-                className="text-sm text-gray-500 hover:text-gray-700"
-              >
-                Sign out
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSettingsOpen(true)}
+                  className="text-gray-500 hover:text-gray-700"
+                  title="CalDAV Settings"
+                >
+                  <Settings className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => signOut({ callbackUrl: "/login" })}
+                  className="text-sm text-gray-500 hover:text-gray-700"
+                >
+                  Sign out
+                </button>
+              </div>
             </div>
           </div>
           <TaskList
@@ -267,6 +279,11 @@ export default function MainPage() {
           </div>
         ) : null}
       </DragOverlay>
+      <CalendarSettingsModal
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onSyncComplete={fetchTasks}
+      />
     </DndContext>
   )
 }
