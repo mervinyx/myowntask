@@ -95,6 +95,7 @@ export default function CalendarSettingsModal({
     setLoading(true)
 
     try {
+      console.log("Submitting form data:", formData)
       const res = await fetch("/api/calendar-account", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

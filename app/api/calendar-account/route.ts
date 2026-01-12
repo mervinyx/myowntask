@@ -49,8 +49,9 @@ export async function POST(request: Request) {
     const parsedData = createAccountSchema.safeParse(body)
 
     if (!parsedData.success) {
+      console.error("Validation error:", parsedData.error)
       return NextResponse.json(
-        { error: "Invalid data" },
+        { error: "Invalid data", details: parsedData.error },
         { status: 400 }
       )
     }
