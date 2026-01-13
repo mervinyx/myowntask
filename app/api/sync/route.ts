@@ -142,7 +142,7 @@ function parseICalDate(
   params: Record<string, string> = {}
 ): { date: Date | null; isAllDay: boolean } {
   const normalizedParams = Object.fromEntries(
-    Object.entries(params).map(([k, v]) => [k.toUpperCase(), v])
+    Object.entries(params).map(([k, v]) => [k.toUpperCase(), v.toUpperCase()])
   )
   const isDateOnly =
     normalizedParams.VALUE === "DATE" || /^\d{8}$/.test(value)
@@ -190,6 +190,18 @@ interface ParsedEvent {
   start: Date
   end: Date
   isAllDay: boolean
+}
+
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&#13;/g, "\r")
+    .replace(/&#10;/g, "\n")
+    .replace(/&#9;/g, "\t")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
 }
 
 function parseSingleVEvent(text: string): ParsedEvent | null {
@@ -246,6 +258,7 @@ function parseSingleVEvent(text: string): ParsedEvent | null {
       data.start = parsed.date
       if (parsed.isAllDay) {
         data.isAllDay = true
+        console.log("All-day event detected, DTSTART raw:", rawValue.trim(), "params:", params)
       }
     } else if (key === "DTEND") {
       const parsed = parseICalDate(rawValue.trim(), params)
@@ -280,7 +293,9 @@ function parseICSEvents(icsText: string): ParsedEvent[] {
   if (!icsText) {
     return []
   }
-  const unfolded = icsText.replace(/\r?\n[ \t]/g, "")
+  // Decode HTML entities (DingTalk returns &#13;, &amp;, etc.)
+  const decoded = decodeHtmlEntities(icsText)
+  const unfolded = decoded.replace(/\r?\n[ \t]/g, "")
   return unfolded
     .split("BEGIN:VEVENT")
     .slice(1)
