@@ -30,105 +30,129 @@ export async function POST() {
       isAllDay: boolean
     }> = []
 
-    const calDavUrl = account.serverUrl
+    const calDavUrl = account.serverUrl.endsWith("/")
+      ? account.serverUrl
+      : account.serverUrl + "/"
 
     const authHeader = `Basic ${Buffer.from(
       `${account.username}:${account.password}`
     ).toString("base64")}`
 
-    const calDavResponse = await fetch(calDavUrl, {
-      method: "REPORT",
+    const propfindBody = `<?xml version="1.0" encoding="utf-8"?>
+<D:propfind xmlns:D="DAV:">
+  <D:prop>
+    <D:displayname/>
+    <D:getcontenttype/>
+    <D:getetag/>
+    <D:resourcetype/>
+  </D:prop>
+</D:propfind>`
+
+    console.log("Sending PROPFIND to:", calDavUrl)
+    const propfindResponse = await fetch(calDavUrl, {
+      method: "PROPFIND",
       headers: {
         Authorization: authHeader,
         Depth: "1",
         "Content-Type": "application/xml; charset=utf-8",
       },
-      body: `<?xml version="1.0" encoding="utf-8" ?>
-<C:calendar-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
-  <D:prop>
-    <D:getetag/>
-    <C:calendar-data/>
-  </D:prop>
-  <C:filter>
-    <C:comp-filter name="VCALENDAR">
-      <C:comp-filter name="VEVENT">
-        <C:time-range start="${now.toISOString().split('.')[0]}Z"/>
-      </C:comp-filter>
-    </C:comp-filter>
-  </C:filter>
-</C:calendar-query>`,
+      body: propfindBody,
     })
 
-    console.log("CalDAV response status:", calDavResponse.status)
-    const responseText = await calDavResponse.text()
-    console.log("CalDAV response body (first 2000 chars):", responseText.substring(0, 2000))
+    console.log("PROPFIND response status:", propfindResponse.status)
+    const propfindText = await propfindResponse.text()
+    console.log(
+      "PROPFIND response body (first 2000 chars):",
+      propfindText.substring(0, 2000)
+    )
 
-    if (calDavResponse.ok) {
-      const calendarDataMatches = responseText.match(/<C:calendar-data[^>]*>([\s\S]*?)<\/C:calendar-data>/gi) || []
-      console.log("Found calendar data matches:", calendarDataMatches.length)
+    if (!propfindResponse.ok) {
+      console.error("PROPFIND failed with status:", propfindResponse.status)
+      return NextResponse.json(
+        { error: "Failed to list calendar events" },
+        { status: 500 }
+      )
+    }
 
-      for (const match of calendarDataMatches) {
-        const veventData = match.replace(/<[^>]+>/g, "")
-        const icalLines = veventData.split("\n")
+    const hrefMatches = propfindText.match(/<[^:]*:?href[^>]*>([^<]+)<\/[^:]*:?href>/gi) || []
+    const icsUrls: string[] = []
 
-        let title = "Untitled Event"
-        let startAt: Date | null = null
-        let endAt: Date | null = null
-        let isAllDay = false
-        let externalId = ""
+    for (const match of hrefMatches) {
+      const href = match.replace(/<[^>]+>/g, "").trim()
+      if (href.endsWith(".ics")) {
+        if (href.startsWith("http://") || href.startsWith("https://")) {
+          icsUrls.push(href)
+        } else {
+          const baseUrl = new URL(calDavUrl)
+          const absoluteUrl = new URL(href, baseUrl.origin).toString()
+          icsUrls.push(absoluteUrl)
+        }
+      }
+    }
 
-        for (let i = 0; i < icalLines.length; i++) {
-          const line = icalLines[i].trim()
-          if (line.startsWith("SUMMARY:")) {
-            title = line.substring(8)
-          } else if (line.startsWith("DTSTART:")) {
-            startAt = parseICSDate(line.substring(8), false)
-          } else if (line.startsWith("DTEND:")) {
-            endAt = parseICSDate(line.substring(6), false)
-          } else if (line.startsWith("DTSTART;VALUE=DATE:")) {
-            isAllDay = true
-            startAt = parseICSDate(line.substring(19), true)
-          } else if (line.startsWith("DTEND;VALUE=DATE:")) {
-            endAt = parseICSDate(line.substring(17), true)
-          } else if (line.startsWith("UID:")) {
-            externalId = line.substring(4)
-          }
+    console.log("Found .ics files:", icsUrls.length)
+
+    for (const icsUrl of icsUrls) {
+      try {
+        console.log("Fetching .ics:", icsUrl)
+        const icsResponse = await fetch(icsUrl, {
+          method: "GET",
+          headers: {
+            Authorization: authHeader,
+          },
+        })
+
+        console.log("GET .ics status:", icsResponse.status)
+
+        if (!icsResponse.ok) {
+          console.warn("Failed to fetch .ics:", icsUrl, icsResponse.status)
+          continue
         }
 
-        if (startAt && endAt && externalId) {
+        const icsContent = await icsResponse.text()
+        const events = parseICSContent(icsContent, now)
+
+        for (const event of events) {
           const existingEvent = await prisma.externalEvent.findFirst({
             where: {
               accountId: account.id,
-              externalId,
+              externalId: event.externalId,
             },
           })
 
           if (existingEvent) {
             await prisma.externalEvent.update({
               where: { id: existingEvent.id },
-              data: { title, startAt, endAt, isAllDay },
+              data: {
+                title: event.title,
+                startAt: event.startAt,
+                endAt: event.endAt,
+                isAllDay: event.isAllDay,
+              },
             })
           } else {
             await prisma.externalEvent.create({
               data: {
                 accountId: account.id,
-                externalId,
-                title,
-                startAt,
-                endAt,
-                isAllDay,
+                externalId: event.externalId,
+                title: event.title,
+                startAt: event.startAt,
+                endAt: event.endAt,
+                isAllDay: event.isAllDay,
               },
             })
           }
 
           syncedEvents.push({
-            id: externalId,
-            title,
-            startAt,
-            endAt,
-            isAllDay,
+            id: event.externalId,
+            title: event.title,
+            startAt: event.startAt,
+            endAt: event.endAt,
+            isAllDay: event.isAllDay,
           })
         }
+      } catch (icsError) {
+        console.error("Error fetching .ics file:", icsUrl, icsError)
       }
     }
 
@@ -151,20 +175,105 @@ export async function POST() {
   }
 }
 
+function parseICSContent(
+  icsContent: string,
+  now: Date
+): Array<{
+  externalId: string
+  title: string
+  startAt: Date
+  endAt: Date
+  isAllDay: boolean
+}> {
+  const events: Array<{
+    externalId: string
+    title: string
+    startAt: Date
+    endAt: Date
+    isAllDay: boolean
+  }> = []
+
+  const veventBlocks = icsContent.split("BEGIN:VEVENT")
+
+  for (let i = 1; i < veventBlocks.length; i++) {
+    const block = veventBlocks[i].split("END:VEVENT")[0]
+    const lines = block.split(/\r?\n/)
+
+    let title = "Untitled Event"
+    let startAt: Date | null = null
+    let endAt: Date | null = null
+    let isAllDay = false
+    let externalId = ""
+
+    for (const line of lines) {
+      const trimmedLine = line.trim()
+
+      if (trimmedLine.startsWith("SUMMARY:")) {
+        title = trimmedLine.substring(8)
+      } else if (trimmedLine.startsWith("DTSTART:")) {
+        startAt = parseICSDate(trimmedLine.substring(8), false)
+      } else if (trimmedLine.startsWith("DTEND:")) {
+        endAt = parseICSDate(trimmedLine.substring(6), false)
+      } else if (trimmedLine.startsWith("DTSTART;VALUE=DATE:")) {
+        isAllDay = true
+        startAt = parseICSDate(trimmedLine.substring(19), true)
+      } else if (trimmedLine.startsWith("DTEND;VALUE=DATE:")) {
+        endAt = parseICSDate(trimmedLine.substring(17), true)
+      } else if (trimmedLine.startsWith("DTSTART;TZID=")) {
+        const valueStart = trimmedLine.indexOf(":")
+        if (valueStart !== -1) {
+          startAt = parseICSDate(trimmedLine.substring(valueStart + 1), false)
+        }
+      } else if (trimmedLine.startsWith("DTEND;TZID=")) {
+        const valueStart = trimmedLine.indexOf(":")
+        if (valueStart !== -1) {
+          endAt = parseICSDate(trimmedLine.substring(valueStart + 1), false)
+        }
+      } else if (trimmedLine.startsWith("UID:")) {
+        externalId = trimmedLine.substring(4)
+      }
+    }
+
+    if (startAt && endAt && externalId) {
+      if (endAt >= now) {
+        events.push({
+          externalId,
+          title,
+          startAt,
+          endAt,
+          isAllDay,
+        })
+      }
+    }
+  }
+
+  return events
+}
+
 function parseICSDate(dateString: string, isAllDay: boolean): Date {
+  const cleanDate = dateString.replace("Z", "").trim()
+
   if (isAllDay) {
-    const year = parseInt(dateString.substring(0, 4))
-    const month = parseInt(dateString.substring(4, 6)) - 1
-    const day = parseInt(dateString.substring(6, 8))
+    const year = parseInt(cleanDate.substring(0, 4))
+    const month = parseInt(cleanDate.substring(4, 6)) - 1
+    const day = parseInt(cleanDate.substring(6, 8))
     return new Date(year, month, day)
   }
 
-  const year = parseInt(dateString.substring(0, 4))
-  const month = parseInt(dateString.substring(4, 6)) - 1
-  const day = parseInt(dateString.substring(6, 8))
-  const hour = parseInt(dateString.substring(9, 11)) || 0
-  const minute = parseInt(dateString.substring(11, 13)) || 0
-  const second = parseInt(dateString.substring(13, 15)) || 0
+  const year = parseInt(cleanDate.substring(0, 4))
+  const month = parseInt(cleanDate.substring(4, 6)) - 1
+  const day = parseInt(cleanDate.substring(6, 8))
 
-  return new Date(year, month, day, hour, minute, second)
+  if (cleanDate.length >= 15 && cleanDate.charAt(8) === "T") {
+    const hour = parseInt(cleanDate.substring(9, 11)) || 0
+    const minute = parseInt(cleanDate.substring(11, 13)) || 0
+    const second = parseInt(cleanDate.substring(13, 15)) || 0
+
+    if (dateString.endsWith("Z")) {
+      return new Date(Date.UTC(year, month, day, hour, minute, second))
+    }
+    return new Date(year, month, day, hour, minute, second)
+  }
+
+  return new Date(year, month, day)
 }
