@@ -50,16 +50,22 @@ export async function POST() {
     <C:calendar-data/>
   </D:prop>
   <C:filter>
-    <C:comp-filter name="VEVENT">
-      <C:time-range start="${now.toISOString().split('.')[0]}Z"/>
+    <C:comp-filter name="VCALENDAR">
+      <C:comp-filter name="VEVENT">
+        <C:time-range start="${now.toISOString().split('.')[0]}Z"/>
+      </C:comp-filter>
     </C:comp-filter>
   </C:filter>
 </C:calendar-query>`,
     })
 
+    console.log("CalDAV response status:", calDavResponse.status)
+    const responseText = await calDavResponse.text()
+    console.log("CalDAV response body (first 2000 chars):", responseText.substring(0, 2000))
+
     if (calDavResponse.ok) {
-      const xmlText = await calDavResponse.text()
-      const calendarDataMatches = xmlText.match(/<C:calendar-data[^>]*>([\s\S]*?)<\/C:calendar-data>/gi) || []
+      const calendarDataMatches = responseText.match(/<C:calendar-data[^>]*>([\s\S]*?)<\/C:calendar-data>/gi) || []
+      console.log("Found calendar data matches:", calendarDataMatches.length)
 
       for (const match of calendarDataMatches) {
         const veventData = match.replace(/<[^>]+>/g, "")
