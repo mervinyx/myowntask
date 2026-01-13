@@ -28,20 +28,114 @@ function buildCalDavQuery(start: Date, end: Date): string {
 </c:calendar-query>`
 }
 
-function generateCandidateUrls(originalUrl: string, username: string): string[] {
-  const urls = new Set<string>()
+function getBaseUrl(originalUrl: string): string {
   let cleanUrl = originalUrl.trim()
-  urls.add(cleanUrl)
   if (cleanUrl.endsWith("/")) {
     cleanUrl = cleanUrl.slice(0, -1)
-  } else {
-    urls.add(cleanUrl + "/")
   }
-  urls.add(`${cleanUrl}/dav/${username}/`)
-  urls.add(`${cleanUrl}/caldav/${username}/`)
-  urls.add(`${cleanUrl}/dav/`)
-  urls.add(`${cleanUrl}/caldav/`)
+  try {
+    const url = new URL(cleanUrl)
+    return `${url.protocol}//${url.host}`
+  } catch {
+    return cleanUrl
+  }
+}
+
+function generateCalendarHomeUrls(originalUrl: string, username: string): string[] {
+  const urls = new Set<string>()
+  let cleanUrl = originalUrl.trim()
+  if (cleanUrl.endsWith("/")) {
+    cleanUrl = cleanUrl.slice(0, -1)
+  }
+  
+  const baseUrl = getBaseUrl(cleanUrl)
+  
+  urls.add(cleanUrl + "/")
+  urls.add(`${baseUrl}/dav/${username}/`)
+  urls.add(`${baseUrl}/caldav/${username}/`)
+  urls.add(`${baseUrl}/calendars/${username}/`)
+  urls.add(`${baseUrl}/principals/users/${username}/`)
+  
   return Array.from(urls)
+}
+
+interface DiscoveredCalendar {
+  href: string
+  displayName: string
+  isCalendar: boolean
+}
+
+async function discoverCalendars(
+  homeUrl: string,
+  authHeader: string
+): Promise<DiscoveredCalendar[]> {
+  const propfindBody = `<?xml version="1.0" encoding="UTF-8"?>
+<d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+  <d:prop>
+    <d:resourcetype/>
+    <d:displayname/>
+  </d:prop>
+</d:propfind>`
+
+  try {
+    const res = await fetch(homeUrl, {
+      method: "PROPFIND",
+      headers: {
+        Depth: "1",
+        "Content-Type": "application/xml; charset=utf-8",
+        Authorization: authHeader,
+      },
+      body: propfindBody,
+    })
+
+    if (!res.ok) {
+      console.log("PROPFIND failed for", homeUrl, "status:", res.status)
+      return []
+    }
+
+    const xmlText = await res.text()
+    console.log("PROPFIND response length:", xmlText.length)
+
+    const calendars: DiscoveredCalendar[] = []
+    const responseRegex = /<D:response[^>]*>([\s\S]*?)<\/D:response>/gi
+    let match
+    
+    while ((match = responseRegex.exec(xmlText)) !== null) {
+      const responseBlock = match[1]
+      
+      const hrefMatch = /<D:href[^>]*>([^<]+)<\/D:href>/i.exec(responseBlock)
+      if (!hrefMatch) continue
+      const href = hrefMatch[1]
+      
+      const isCalendar = /<[Cc]:calendar\s*\/>/i.test(responseBlock) ||
+                         /<[Cc]:calendar>/i.test(responseBlock)
+      
+      const displayNameMatch = /<D:displayname[^>]*>([^<]*)<\/D:displayname>/i.exec(responseBlock)
+      const displayName = displayNameMatch ? displayNameMatch[1] : href
+      
+      if (isCalendar) {
+        calendars.push({ href, displayName, isCalendar })
+      }
+    }
+    
+    console.log("Discovered calendars:", calendars)
+    return calendars
+  } catch (err) {
+    console.error("Error discovering calendars:", err)
+    return []
+  }
+}
+
+function resolveCalendarUrl(baseUrl: string, href: string): string {
+  if (href.startsWith("/")) {
+    try {
+      const url = new URL(baseUrl)
+      return `${url.protocol}//${url.host}${href}`
+    } catch {
+      return baseUrl + href
+    }
+  }
+  return baseUrl.endsWith("/") ? baseUrl + href : baseUrl + "/" + href
 }
 
 function parseICalDate(
@@ -240,6 +334,44 @@ function parseCalDavResponse(
   return filtered.sort((a, b) => a.start.getTime() - b.start.getTime())
 }
 
+async function queryCalendarEvents(
+  calendarUrl: string,
+  authHeader: string,
+  rangeStart: Date,
+  rangeEnd: Date
+): Promise<{ events: ParsedEvent[]; success: boolean }> {
+  const body = buildCalDavQuery(rangeStart, rangeEnd)
+  
+  try {
+    console.log("Querying calendar:", calendarUrl)
+    const res = await fetch(calendarUrl, {
+      method: "REPORT",
+      headers: {
+        Depth: "1",
+        "Content-Type": "application/xml; charset=utf-8",
+        Authorization: authHeader,
+      },
+      body,
+    })
+
+    if (!res.ok) {
+      console.log("REPORT failed for", calendarUrl, "status:", res.status)
+      return { events: [], success: false }
+    }
+
+    const xmlText = await res.text()
+    console.log("REPORT response length:", xmlText.length)
+    
+    const events = parseCalDavResponse(xmlText, rangeStart, rangeEnd)
+    console.log("Parsed events from", calendarUrl, ":", events.length)
+    
+    return { events, success: true }
+  } catch (err) {
+    console.error("Error querying calendar:", err)
+    return { events: [], success: false }
+  }
+}
+
 export async function POST() {
   const session = await auth()
 
@@ -267,64 +399,65 @@ export async function POST() {
       `${account.username}:${account.password}`
     ).toString("base64")}`
 
-    const body = buildCalDavQuery(rangeStart, rangeEnd)
-    const candidateUrls = generateCandidateUrls(
+    const calendarHomeUrls = generateCalendarHomeUrls(
       account.serverUrl,
       account.username
     )
 
-    console.log("Trying candidate URLs:", candidateUrls)
+    console.log("Trying calendar home URLs:", calendarHomeUrls)
 
-    let response: Response | null = null
+    let allEvents: ParsedEvent[] = []
     let successUrl: string | null = null
+    let discoveredAnyCalendar = false
 
-    for (const url of candidateUrls) {
-      try {
-        console.log("Trying REPORT:", url)
-        const res = await fetch(url, {
-          method: "REPORT",
-          headers: {
-            Depth: "1",
-            "Content-Type": "application/xml; charset=utf-8",
-            Authorization: authHeader,
-          },
-          body,
-        })
-
-        console.log("REPORT response status:", res.status)
-
-        if (res.ok) {
-          response = res
-          successUrl = url
-          console.log("Success with URL:", url)
-          break
-        } else if (res.status === 401 || res.status === 403) {
-          return NextResponse.json(
-            { error: "CalDAV authentication failed" },
-            { status: 401 }
-          )
-        } else if (res.status === 404 || res.status === 405) {
-          continue
-        }
-      } catch (err) {
-        console.log("Fetch error for", url, err)
+    for (const homeUrl of calendarHomeUrls) {
+      const calendars = await discoverCalendars(homeUrl, authHeader)
+      
+      if (calendars.length === 0) {
         continue
+      }
+      
+      discoveredAnyCalendar = true
+      console.log(`Found ${calendars.length} calendars at ${homeUrl}`)
+
+      for (const calendar of calendars) {
+        const calendarUrl = resolveCalendarUrl(homeUrl, calendar.href)
+        const { events, success } = await queryCalendarEvents(
+          calendarUrl,
+          authHeader,
+          rangeStart,
+          rangeEnd
+        )
+        
+        if (success) {
+          allEvents.push(...events)
+          if (!successUrl) {
+            successUrl = homeUrl
+          }
+        }
+      }
+      
+      if (allEvents.length > 0) {
+        break
       }
     }
 
-    if (!response) {
+    if (!discoveredAnyCalendar) {
       return NextResponse.json(
-        { error: "Could not connect to CalDAV server (check URL)" },
+        { error: "Could not find any calendars. Check server URL and credentials." },
         { status: 500 }
       )
     }
 
-    const xmlText = await response.text()
-    console.log("CalDAV XML Response Length:", xmlText.length)
-    console.log("CalDAV XML Response (first 1000):", xmlText.substring(0, 1000))
-
-    const events = parseCalDavResponse(xmlText, rangeStart, rangeEnd)
-    console.log("Parsed events:", events.length)
+    const seen = new Set<string>()
+    const events = allEvents.filter((event) => {
+      const key = `${event.id}-${event.start.getTime()}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    }).sort((a, b) => a.start.getTime() - b.start.getTime())
+    
+    console.log("Total unique events:", events.length)
 
     const syncedEvents: Array<{
       id: string
