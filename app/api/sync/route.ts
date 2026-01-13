@@ -107,8 +107,7 @@ async function discoverCalendars(
       if (!hrefMatch) continue
       const href = hrefMatch[1]
       
-      const isCalendar = /<[Cc]:calendar\s*\/>/i.test(responseBlock) ||
-                         /<[Cc]:calendar>/i.test(responseBlock)
+      const isCalendar = /<[Cc]:calendar[^>]*\/?>/i.test(responseBlock)
       
       const displayNameMatch = /<D:displayname[^>]*>([^<]*)<\/D:displayname>/i.exec(responseBlock)
       const displayName = displayNameMatch ? displayNameMatch[1] : href
