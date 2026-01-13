@@ -106,7 +106,8 @@ export default function CalendarSettingsModal({
         throw new Error("Failed to save settings")
       }
 
-      await fetchAccount()
+      const savedAccount = await res.json()
+      setAccount(savedAccount)
       if (onSyncComplete) onSyncComplete()
     } catch (err) {
       console.error(err)
@@ -157,7 +158,10 @@ export default function CalendarSettingsModal({
         throw new Error("Sync failed")
       }
 
-      await fetchAccount()
+      const syncResult = await res.json()
+      if (account) {
+        setAccount({ ...account, lastSyncedAt: syncResult.lastSyncedAt })
+      }
       if (onSyncComplete) onSyncComplete()
     } catch (err) {
       console.error(err)
