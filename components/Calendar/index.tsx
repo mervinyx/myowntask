@@ -72,7 +72,13 @@ export default function Calendar({
 
   const getExternalEventsForDate = (date: Date) => {
     return externalEvents.filter((event) => {
-      return isSameDay(new Date(event.startAt), date)
+      const eventDate = new Date(event.startAt)
+      if (event.isAllDay) {
+        return eventDate.getUTCFullYear() === date.getFullYear() &&
+               eventDate.getUTCMonth() === date.getMonth() &&
+               eventDate.getUTCDate() === date.getDate()
+      }
+      return isSameDay(eventDate, date)
     })
   }
 
@@ -86,6 +92,7 @@ export default function Calendar({
 
   const getExternalEventsForDateTime = (date: Date, hour: number) => {
     return externalEvents.filter((event) => {
+      if (event.isAllDay) return false
       const eventDate = new Date(event.startAt)
       return isSameDay(eventDate, date) && eventDate.getHours() === hour
     })
@@ -216,6 +223,7 @@ export default function Calendar({
               </div>
               {days.map((day, dayIndex) => {
                 const hourTasks = getTasksForDateTime(day, hour)
+                const hourEvents = getExternalEventsForDateTime(day, hour)
 
                 return (
                   <DroppableCell
@@ -230,6 +238,14 @@ export default function Calendar({
                         className={`text-xs p-1 rounded border ${priorityColors[task.priority]}`}
                       >
                         {task.title}
+                      </div>
+                    ))}
+                    {hourEvents.map((event) => (
+                      <div
+                        key={event.id}
+                        className={`text-xs p-1 rounded border ${externalEventColor}`}
+                      >
+                        {event.title}
                       </div>
                     ))}
                   </DroppableCell>
@@ -259,6 +275,7 @@ export default function Calendar({
         <div className="flex-1 overflow-y-auto">
           {hours.map((hour) => {
             const hourTasks = getTasksForDateTime(currentDate, hour)
+            const hourEvents = getExternalEventsForDateTime(currentDate, hour)
 
             return (
               <div key={hour} className="grid grid-cols-2 gap-0.5 border-b border-gray-200">
@@ -276,6 +293,14 @@ export default function Calendar({
                       className={`text-sm p-2 rounded border ${priorityColors[task.priority]}`}
                     >
                       {task.title}
+                    </div>
+                  ))}
+                  {hourEvents.map((event) => (
+                    <div
+                      key={event.id}
+                      className={`text-sm p-2 rounded border ${externalEventColor}`}
+                    >
+                      {event.title}
                     </div>
                   ))}
                 </DroppableCell>
