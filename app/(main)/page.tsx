@@ -23,10 +23,19 @@ interface Task {
   completed: boolean
 }
 
+interface ExternalEvent {
+  id: string
+  title: string
+  startAt: string
+  endAt: string
+  isAllDay: boolean
+}
+
 export default function MainPage() {
   const router = useRouter()
   const { data: session, status } = useSession()
   const [tasks, setTasks] = useState<Task[]>([])
+  const [externalEvents, setExternalEvents] = useState<ExternalEvent[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [view, setView] = useState<"month" | "week" | "day">("month")
   const [currentDate, setCurrentDate] = useState(new Date())
@@ -41,6 +50,7 @@ export default function MainPage() {
   useEffect(() => {
     if (status === "authenticated") {
       fetchTasks()
+      fetchExternalEvents()
     }
   }, [status])
 
@@ -53,6 +63,18 @@ export default function MainPage() {
       }
     } catch (error) {
       console.error("Failed to fetch tasks:", error)
+    }
+  }
+
+  const fetchExternalEvents = async () => {
+    try {
+      const response = await fetch("/api/external-events")
+      if (response.ok) {
+        const data = await response.json()
+        setExternalEvents(data)
+      }
+    } catch (error) {
+      console.error("Failed to fetch external events:", error)
     }
   }
 
@@ -244,6 +266,7 @@ export default function MainPage() {
             view={view}
             currentDate={currentDate}
             tasks={tasks}
+            externalEvents={externalEvents}
             onViewChange={handleViewChange}
             onDropTask={handleDropTask}
             onDragBack={handleDragBack}
@@ -266,7 +289,10 @@ export default function MainPage() {
       <CalendarSettingsModal
         isOpen={settingsOpen}
         onClose={() => setSettingsOpen(false)}
-        onSyncComplete={fetchTasks}
+        onSyncComplete={() => {
+          fetchTasks()
+          fetchExternalEvents()
+        }}
       />
     </DndContext>
   )
